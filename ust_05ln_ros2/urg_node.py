@@ -92,6 +92,8 @@ class urg_node(Node):
             data = self.data_prev
             self.send_command(self.ID)
 
+        print(len(data))
+
         measurements = [(int(data[i:i+4],16), int(data[i+4:i+8],16))  for i in range(0, len(data)-8, 8)]
         self.data_prev = data
         
@@ -111,7 +113,6 @@ def main(args=None):
         urg_lidar_node.send_command(urg_lidar_node.ID)
 
         urg_lidar_node.send_command(urg_lidar_node.PD)
-        urg_lidar_node.send_command(urg_lidar_node.ID)
         urg_lidar_node.send_command(urg_lidar_node.START_RANGING)
         while rclpy.ok():
             data = urg_lidar_node.get_measures()
@@ -124,7 +125,7 @@ def main(args=None):
                 for i in range(541):
                     scan_data = laser_data[i]
                     distance_list.append(scan_data[0] * 0.001)
-                    intensity_list.append(scan_data[1] / 65535)
+                    intensity_list.append(scan_data[1] * 0.00001)
                      
                 scan_msg.ranges = distance_list
                 scan_msg.intensities = intensity_list
