@@ -92,7 +92,7 @@ class urg_node(Node):
             data = self.data_prev
             self.send_command(self.ID)
 
-        print(len(data))
+        #print(len(data))
 
         measurements = [(int(data[i:i+4],16), int(data[i+4:i+8],16))  for i in range(0, len(data)-8, 8)]
         self.data_prev = data
