@@ -12,6 +12,8 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 running ```ls /dev | grep hokuyo``` should return the grep result with ```hokuyo``` 
+Run :
+```ros2 run ust_05ln_ros2 urg_node```
 
 # Tuning guide
 edit the ```ust_05ln_ros2/urg_node.py``` and edit the ```offset``` variable to tune the angle offset (unit in radiant)
