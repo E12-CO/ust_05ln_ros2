@@ -181,9 +181,9 @@ class ust_05ln_if : public rclcpp::Node{
 		scan_buffer[SERIAL_MAX_LEN] = '\0';
 		
 		LaserMsg.header.frame_id 	= laser_frame_id;
-		LaserMsg.angle_min 			= -1.178097245f + angle_offset;
-		LaserMsg.angle_max			= 1.178097245f + angle_offset;
-		LaserMsg.angle_increment	= 0.008726646f; // 4.712389rad / (541 -1)
+		LaserMsg.angle_min 			= -2.356194f + angle_offset;
+		LaserMsg.angle_max			= 2.356194f + angle_offset;
+		LaserMsg.angle_increment	= 0.008727f; // 4.712389rad / (541 -1)
 		LaserMsg.scan_time			= (1 / 40.0f);
 		LaserMsg.time_increment		= (1 / 40.0f) / 541.0f;
 		LaserMsg.ranges.resize(541);
