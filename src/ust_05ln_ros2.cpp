@@ -23,7 +23,7 @@ struct termios tty;
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 
-#define SERIAL_TIME_MIL	10 // around 80Hz to ping pong fifo the scan data
+#define SERIAL_TIME_MIL	8 // around 80Hz to ping pong fifo the scan data
 #define FSM_TIME_MIL	100 // around 10Hz
 
 #define HOKUYO_CMD_ID				"#IN0D54\n"
@@ -63,8 +63,8 @@ class ust_05ln_if : public rclcpp::Node{
 	
 	// Laser properties
 	typedef struct{
-		int scan_length;
-		int scan_count;
+		long unsigned int scan_length;
+		long unsigned int scan_count;
 		float range_max;
 		float angle_resolution;
 	}ust_property_t;
@@ -188,11 +188,14 @@ class ust_05ln_if : public rclcpp::Node{
 		
 		tcflush(serial_port,TCIOFLUSH);// Flush serial buffer before start
 		
-		// Probe the sensor before start
-		if(hokuyo_sensorIdent() < 0){
-			std::raise(SIGINT);
-			return;
-		}
+		// Allocate buffer extra byte for null character
+		// scan_buffer = new char [SERIAL_MAX_LEN+1];
+		scan_buffer[SERIAL_MAX_LEN] = '\0';
+		
+		// Setup laser scan data
+		LaserMsg.header.frame_id 	= laser_frame_id;
+		LaserMsg.angle_min 			= -2.356194f + angle_offset;
+		LaserMsg.angle_max			= 2.356194f + angle_offset;
 		
 		// Laser Publisher 
 		pubLaserScan =
@@ -200,23 +203,6 @@ class ust_05ln_if : public rclcpp::Node{
 				laser_topic,
 				rclcpp::QoS(rclcpp::SensorDataQoS())
 			);
-		
-		// Allocate buffer extra byte for null character
-		// scan_buffer = new char [SERIAL_MAX_LEN+1];
-		scan_buffer[SERIAL_MAX_LEN] = '\0';
-		
-		// Set up laser message parameter
-		LaserMsg.header.frame_id 	= laser_frame_id;
-		LaserMsg.angle_min 			= -2.356194f + angle_offset;
-		LaserMsg.angle_max			= 2.356194f + angle_offset;
-		LaserMsg.angle_increment	= ust_prop_t.angle_resolution;
-		LaserMsg.scan_time			= (1 / 40.0f);
-		LaserMsg.time_increment		= (1 / 40.0f) / ust_prop_t.scan_count;
-		LaserMsg.ranges.resize(ust_prop_t.scan_count);
-		LaserMsg.intensities.resize(ust_prop_t.scan_count);
-		
-		LaserMsg.range_min			= 0.0f;
-		LaserMsg.range_max			= ust_prop_t.range_max;
 		
 		// Timer callback
 		timer_ = 
@@ -268,117 +254,21 @@ class ust_05ln_if : public rclcpp::Node{
 		return (hokuyo_getRxBytes() >= expected_rx) ? true : false;
 	}
 	
+	void hokuyo_readBytes(char *cptr, int clen){
+		read(
+			serial_port,
+			cptr,
+			clen
+			);
+	}
+	
 	void hokuyo_flushSerial(){
 		tcflush(
 			serial_port,
 			TCIOFLUSH
 		);
 	}
-	
-	// Identify whether it's UST-05LN or UST-08LN-11
-	int hokuyo_sensorIdent(){
-		int id_pos = 0;
-		char *temp_query = new char [40+1];
-		
-		hokuyo_cmdID();
-		
-		while(!hokuyo_checkRxEqual(50));
-		
-		RCLCPP_INFO(
-			this->get_logger(),
-			"Start ust probing..."
-		);
-		
-		// Read serial 
-		read(
-			serial_port,
-			temp_query,
-			40
-			);
-		
-		temp_query[40] = 0;
-		
-		find_ident = std::string(temp_query);
-		
-		delete [] temp_query;
-		
-		id_pos = find_ident.find("#IN00: product_name, 5=UST-");
-		find_ident = find_ident.substr(
-				id_pos + 26,
-				find_ident.find(":s", id_pos+26, 2) - (id_pos + 26)
-				);
-		
-		// Detected UST-05LN
-		if(find_ident == "05LN"){
-			RCLCPP_INFO(
-				this->get_logger(),
-				"Found UST-05LN"
-			);
-			ust_prop_t.range_max		= 5.0f;
-			ust_prop_t.scan_length		= HOKUYO_UST05LN_SCAN_LEN;
-			ust_prop_t.scan_count		= HOKUYO_UST05LN_SCAN_COUNT;
-			ust_prop_t.angle_resolution	= 0.008727f;// 0.5 degree
-			
-			return 0;
-		}
-			
-		// Detected UST-08LN-11
-		if(find_ident == "08LN-11"){
-			RCLCPP_INFO(
-				this->get_logger(),
-				"Found UST-08LN-11"
-			);
-			
-			ust_prop_t.range_max		= 8.0f;
-			ust_prop_t.scan_length		= HOKUYO_UST08LN_11_SCAN_LEN;
-			ust_prop_t.scan_count		= HOKUYO_UST08LN_11_SCAN_COUNT;
-			ust_prop_t.angle_resolution	= 0.004363f;// 0.25 degree
-			
-			return 0;
-		}
-			
-		// Need real hardware to verify	
-			
-		// Detected UST-07LNR-02
-		if(find_ident == "07LNR-02"){
-			RCLCPP_INFO(
-				this->get_logger(),
-				"Found UST-07LNR-02"
-			);
-			
-			ust_prop_t.range_max		= 7.0f;
-			ust_prop_t.scan_length		= HOKUYO_UST08LN_11_SCAN_LEN;
-			ust_prop_t.scan_count		= HOKUYO_UST08LN_11_SCAN_COUNT;
-			ust_prop_t.angle_resolution	= 0.004363f;// 0.25 degree <- Need verification !
-			
-			return 0;
-		}	
-			
-		// Detected UST-08LNR-11
-		if(find_ident == "08LNR-11"){
-			RCLCPP_INFO(
-				this->get_logger(),
-				"Found UST-08LNR-11"
-			);
-			
-			ust_prop_t.range_max		= 8.0f;
-			ust_prop_t.scan_length		= HOKUYO_UST08LN_11_SCAN_LEN;
-			ust_prop_t.scan_count		= HOKUYO_UST08LN_11_SCAN_COUNT;
-			ust_prop_t.angle_resolution	= 0.004363f;// 0.25 degree <- Need verification !
-			
-			return 0;
-		}
-			
-				
-		RCLCPP_ERROR(
-			this->get_logger(),
-			"Can't identify the sensor type %s",
-			find_ident.c_str()
-		);				
-				
-		return -1;		
-	}
-	
+
 	void hokuyo_cmdID(){
 		hokuyo_writeCmd(HOKUYO_CMD_ID);
 	}
@@ -403,8 +293,7 @@ class ust_05ln_if : public rclcpp::Node{
 			&rx_bytes
 			);
 		
-		read(
-			serial_port,
+		hokuyo_readBytes(
 			scan_buffer,
 			rx_bytes
 			);
@@ -500,7 +389,7 @@ class ust_05ln_if : public rclcpp::Node{
 	
 	void hokuyo_publisher(){
 		// If data is less than the ust_prop_t.scan_length, wait for more
-		if(laser_dataOut.length() != ust_prop_t.scan_length){
+		if(laser_dataOut.length() < ust_prop_t.scan_length){
 			RCLCPP_DEBUG(
 				this->get_logger(),
 				"laser data size too small %ld",
@@ -520,8 +409,10 @@ class ust_05ln_if : public rclcpp::Node{
 			(laser_dataOut.find(':') != std::string::npos)
 		)
 			laser_dataOut = laser_dataOld;	
+			
 
 		for(uint16_t i = 0; i < ust_prop_t.scan_count; i++){
+			
 			try{
 			sub_range 	= laser_dataOut.substr(i*8, 4);// Get 4 chars from string
 			sub_intens 	= laser_dataOut.substr((i*8)+4, 4);
@@ -596,13 +487,106 @@ class ust_05ln_if : public rclcpp::Node{
 			}
 			break;
 			
-			case 2:// PD query
+			case 2:// PD query and ID probing
 			{
 				if(!hokuyo_checkRxEqual(994))// return of ID query
 					return;
+		
+				int id_pos = 0;
+
+				// Read serial 
+				hokuyo_readBytes(
+					scan_buffer,
+					rx_bytes
+					);
 				
+				find_ident = std::string(scan_buffer);
 				
 				hokuyo_flushSerial();
+				
+				id_pos = find_ident.find("#IN00: product_name, 5=UST-");
+				find_ident = find_ident.substr(
+						id_pos + 26,
+						find_ident.find(":s", id_pos+26, 2) - (id_pos + 26)
+						);
+				
+				// Detected UST-05LN
+				if(find_ident == "05LN"){
+					RCLCPP_INFO(
+						this->get_logger(),
+						"Found UST-05LN"
+					);
+					ust_prop_t.range_max		= 5.0f;
+					ust_prop_t.scan_length		= HOKUYO_UST05LN_SCAN_LEN;
+					ust_prop_t.scan_count		= HOKUYO_UST05LN_SCAN_COUNT;
+					ust_prop_t.angle_resolution	= 0.008727f;// 0.5 degree
+					
+					
+				}
+					
+				// Detected UST-08LN-11
+				else if(find_ident == "08LN-11"){
+					RCLCPP_INFO(
+						this->get_logger(),
+						"Found UST-08LN-11"
+					);
+					
+					ust_prop_t.range_max		= 8.0f;
+					ust_prop_t.scan_length		= HOKUYO_UST08LN_11_SCAN_LEN;
+					ust_prop_t.scan_count		= HOKUYO_UST08LN_11_SCAN_COUNT;
+					ust_prop_t.angle_resolution	= 0.004363f;// 0.25 degree
+					
+					
+				}
+					
+				// Need real hardware to verify	
+					
+				// Detected UST-07LNR-02
+				else if(find_ident == "07LNR-02"){
+					RCLCPP_INFO(
+						this->get_logger(),
+						"Found UST-07LNR-02"
+					);
+					
+					ust_prop_t.range_max		= 7.0f;
+					ust_prop_t.scan_length		= HOKUYO_UST08LN_11_SCAN_LEN;
+					ust_prop_t.scan_count		= HOKUYO_UST08LN_11_SCAN_COUNT;
+					ust_prop_t.angle_resolution	= 0.004363f;// 0.25 degree <- Need verification !
+					
+					
+				}	
+					
+				// Detected UST-08LNR-11
+				else if(find_ident == "08LNR-11"){
+					RCLCPP_INFO(
+						this->get_logger(),
+						"Found UST-08LNR-11"
+					);
+					
+					ust_prop_t.range_max		= 8.0f;
+					ust_prop_t.scan_length		= HOKUYO_UST08LN_11_SCAN_LEN;
+					ust_prop_t.scan_count		= HOKUYO_UST08LN_11_SCAN_COUNT;
+					ust_prop_t.angle_resolution	= 0.004363f;// 0.25 degree <- Need verification !
+					
+					
+				}else{
+					RCLCPP_ERROR(
+						this->get_logger(),
+						"Can't identify the sensor type %s",
+						find_ident.c_str()
+					);	
+					std::raise(SIGINT);
+				}
+				
+				// Set up laser message parameter
+				LaserMsg.angle_increment	= ust_prop_t.angle_resolution;
+				LaserMsg.scan_time			= (1 / 40.0f);
+				LaserMsg.time_increment		= (1 / 40.0f) / ust_prop_t.scan_count;
+				
+				LaserMsg.range_min			= 0.0f;
+				LaserMsg.range_max			= ust_prop_t.range_max;
+				LaserMsg.ranges.resize(ust_prop_t.scan_count);
+				LaserMsg.intensities.resize(ust_prop_t.scan_count);
 				
 				RCLCPP_INFO(
 					this->get_logger(), 
