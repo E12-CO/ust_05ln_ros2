@@ -3,4 +3,4 @@ urg_node:
     serial_port: "/dev/hokuyo"
     laser_frame_id: "laser_frame"
     laser_topic: "/scan"
-    angle_offset: -1.22173
+    angle_offset: 0.0
