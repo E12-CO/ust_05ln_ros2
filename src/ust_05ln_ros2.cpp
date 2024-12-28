@@ -23,8 +23,8 @@ struct termios tty;
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 
-#define SERIAL_TIME_MIL	8 // around 80Hz to ping pong fifo the scan data
-#define FSM_TIME_MIL	100 // around 10Hz
+#define SERIAL_TIME_MIL	10 // around 80Hz to ping pong fifo the scan data
+#define FSM_TIME_MIL	200 // around 5Hz
 
 #define HOKUYO_CMD_ID				"#IN0D54\n"
 #define HOKUYO_CMD_PD				"#PD15F5\n"
@@ -298,11 +298,11 @@ class ust_05ln_if : public rclcpp::Node{
 			rx_bytes
 			);
 		
-		// RCLCPP_DEBUG(
-			// this->get_logger(), 
-			// "Received %d bytes %s", 
-			// rx_bytes, scan_buffer
-			// );
+		RCLCPP_DEBUG(
+			this->get_logger(), 
+			"Received %d bytes", 
+			rx_bytes
+			);
 		
 		scan_buffer_str = std::string(scan_buffer);
 
@@ -317,16 +317,16 @@ class ust_05ln_if : public rclcpp::Node{
 			}
 		}else{
 			laserData_offset 	= 0;
-			laserData_remains 	= ust_prop_t.scan_length - laserData_accumu;
+			// laserData_remains 	= ust_prop_t.scan_length - laserData_accumu;
 			
 			// Capping if remains data is larger than serial FIFO size
-			if(laserData_remains > SERIAL_MAX_LEN)
-				laserData_remains = SERIAL_MAX_LEN;
-			
+			// if(laserData_remains > SERIAL_MAX_LEN)
+				// laserData_remains = SERIAL_MAX_LEN;
+			laserData_remains 	= rx_bytes;
 			laserData_accumu 	+= laserData_remains;
 		}
 		
-		// remaining of sencond round -> rx_byte 
+		// remaining of sencond round -> rx_bytes
 		if(inSync == true){
 			try{
 			laserscan_buffer += 
@@ -334,6 +334,13 @@ class ust_05ln_if : public rclcpp::Node{
 					laserData_offset,
 					laserData_remains
 				);
+			
+			RCLCPP_DEBUG(
+				this->get_logger(),
+				"Current laserscan_buffer size %ld",
+				laserscan_buffer.length()
+			);
+				
 			} catch(...){
 				RCLCPP_WARN(
 					this->get_logger(),
@@ -343,6 +350,7 @@ class ust_05ln_if : public rclcpp::Node{
 					scan_buffer_str.c_str()
 				);
 			}	
+			
 			if(laserData_accumu >= ust_prop_t.scan_length){	
 				
 				// Save current scan data
@@ -354,9 +362,8 @@ class ust_05ln_if : public rclcpp::Node{
 					
 				RCLCPP_DEBUG(
 					this->get_logger(), 
-					"Received %ld bytes long complete scan data\n%s<-end",
-					laser_dataOut.length(),
-					laser_dataOut.c_str()
+					"Received %ld bytes long complete scan data",
+					laser_dataOut.length()
 				);	
 				
 				// look for next scan data (if any)
@@ -368,14 +375,15 @@ class ust_05ln_if : public rclcpp::Node{
 						);
 						
 					laserData_accumu = laserscan_buffer.length();
-					// RCLCPP_DEBUG(
-						// this->get_logger(),
-						// "Next scan data %s",
-						// laserscan_buffer.c_str()
-					// );
+					RCLCPP_DEBUG(
+						this->get_logger(),
+						"Next scan data available for %ld bytes!",
+						laserData_accumu
+					);
 				}else{
 					// In the case of having complete single scan data,
 					// just resync the header to get next bytes
+					laserscan_buffer.clear();
 					laserData_accumu = 0;// reset data count accumulator for next scan data
 					inSync = false;
 				}
@@ -430,7 +438,6 @@ class ust_05ln_if : public rclcpp::Node{
 				std::stoi(sub_range, nullptr, 16) * 0.001f;
 			LaserMsg.intensities[i]	=  
 				std::stoi(sub_intens, nullptr, 16) * 0.00001f;
-		
 			
 			} catch(...){
 				RCLCPP_WARN(
@@ -625,6 +632,7 @@ int main(int argc, char **argv){
 	rclcpp::init(argc, argv);
 	auto ust_if {std::make_shared<ust_05ln_if>()};
 	rclcpp::spin(ust_if);
+	ust_if->hokuyo_cmdStopScan();// Stop sensor before exit
 	ust_if->hokuyo_cmdStopScan();// Stop sensor before exit
 	close(ust_if->serial_port);
 	rclcpp::shutdown();
