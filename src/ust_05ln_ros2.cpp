@@ -73,6 +73,8 @@ class ust_05ln_if : public rclcpp::Node{
 	
 	// Laser angle offset (in radiant)
 	float angle_offset;
+	float min_angle;
+	float max_angle;
 
 	// Serial port file descriptor
 	int serial_port = 0;
@@ -121,6 +123,12 @@ class ust_05ln_if : public rclcpp::Node{
 		
 		declare_parameter("angle_offset", 0.0f);
 		get_parameter("angle_offset", angle_offset);
+		
+		declare_parameter("min_angle", -2.356194f);
+		get_parameter("min_angle", min_angle);
+		
+		declare_parameter("max_angle", 2.356194f);
+		get_parameter("max_angle", max_angle);
 		
 		
 		char *serial_port_file = new char[serial_port_.length() + 1];
@@ -377,7 +385,7 @@ class ust_05ln_if : public rclcpp::Node{
 					laserData_accumu = laserscan_buffer.length();
 					RCLCPP_DEBUG(
 						this->get_logger(),
-						"Next scan data available for %ld bytes!",
+						"Next scan data available for %d bytes!",
 						laserData_accumu
 					);
 				}else{
@@ -393,6 +401,20 @@ class ust_05ln_if : public rclcpp::Node{
 			}	
 			
 		}
+	}
+	
+	bool hokuyo_checkIgnoreAngle(uint16_t scan_index){
+		float current_angle;
+		
+		current_angle = (scan_index * ust_prop_t.angle_resolution) - 2.356194f;
+		
+		if(
+		(current_angle < min_angle) || 
+		(current_angle > max_angle)
+		)
+			return true;
+		
+		return false;
 	}
 	
 	void hokuyo_publisher(){
@@ -421,37 +443,40 @@ class ust_05ln_if : public rclcpp::Node{
 
 		for(uint16_t i = 0; i < ust_prop_t.scan_count; i++){
 			
-			try{
-			sub_range 	= laser_dataOut.substr(i*8, 4);// Get 4 chars from string
-			sub_intens 	= laser_dataOut.substr((i*8)+4, 4);
-			} catch(...){
-				RCLCPP_WARN(
-					this->get_logger(),
-					"substring error while parsing range data at position %d",
-					i
-				);
+			// Check for ignored angle 
+			if(!hokuyo_checkIgnoreAngle(i)){
+				try{
+				sub_range 	= laser_dataOut.substr(i*8, 4);// Get 4 chars from string
+				sub_intens 	= laser_dataOut.substr((i*8)+4, 4);
+				} catch(...){
+					RCLCPP_WARN(
+						this->get_logger(),
+						"substring error while parsing range data at position %d",
+						i
+					);
+					
+				}
 				
-			}
-			
-			try{
-			LaserMsg.ranges[i]		=  
-				std::stoi(sub_range, nullptr, 16) * 0.001f;
-			LaserMsg.intensities[i]	=  
-				std::stoi(sub_intens, nullptr, 16) * 0.00001f;
-			
-			} catch(...){
-				RCLCPP_WARN(
-					this->get_logger(),
-					"stoi Exception! : non number character detected %s,%s at %d",
-					sub_range.c_str(), sub_intens.c_str(), i
-				);
+				try{
+				LaserMsg.ranges[i]		=  
+					std::stoi(sub_range, nullptr, 16) * 0.001f;
+				LaserMsg.intensities[i]	=  
+					std::stoi(sub_intens, nullptr, 16) * 0.00001f;
 				
-				RCLCPP_WARN(
-					this->get_logger(),
-					"In this data %s",
-					laser_dataOut.c_str()
-				);
-				return;
+				} catch(...){
+					RCLCPP_WARN(
+						this->get_logger(),
+						"stoi Exception! : non number character detected %s,%s at %d",
+						sub_range.c_str(), sub_intens.c_str(), i
+					);
+					
+					RCLCPP_WARN(
+						this->get_logger(),
+						"In this data %s",
+						laser_dataOut.c_str()
+					);
+					return;
+				}
 			}
 		}
 		
