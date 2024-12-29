@@ -4,5 +4,5 @@ urg_node:
     laser_frame_id: "laser_frame"
     laser_topic: "/scan"
     angle_offset: 0.0
-    min_angle: -1.48353    # -135 degree
-    max_angle: 1.48353     # 135 degree
+    min_angle: -2.356194   # -135 degree
+    max_angle: 2.356194     # 135 degree
