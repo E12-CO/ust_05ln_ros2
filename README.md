@@ -9,12 +9,21 @@ Build :
 
 Udev rule:
 -
+Single LiDAR
 ```
 sudo cp 15-ust05ln.rules /etc/udev/rule.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
-running ```ls /dev | grep hokuyo``` should return the grep result with ```hokuyo```  
+running ```ls /dev | grep hokuyo``` should return the grep result with ```hokuyo```
+
+Multi LiDAR
+```
+cd hokuyo_detector
+./install.sh
+```
+
+After running the ```install.sh``` script. The symlink in ```/dev``` will be created with the name of ```hokuyo_xxxxxxxx``` where the last eight characters are the serial number of the LiDAR
 
 Run :
 -
