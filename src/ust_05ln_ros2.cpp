@@ -232,7 +232,7 @@ class ust_05ln_if : public rclcpp::Node{
 	}
 	
 	void hokuyo_writeCmd(std::string hokuyoCMD){
-		char *hokuyo_cmd_c = new char[hokuyoCMD.length()];
+		char *hokuyo_cmd_c = new char[hokuyoCMD.length()+1];
 		strcpy(hokuyo_cmd_c, hokuyoCMD.c_str());
 		
 		write(
